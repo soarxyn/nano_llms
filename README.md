@@ -7,7 +7,7 @@ As I add more content, these resources will be updated.
 ## Roadmap
 
 1. Tokenization
-    - [ ] Add a simple BPE training implementation in Python.
+    - [x] Add a simple BPE training implementation in Python.
     - [ ] Add a simple BPE encoding/decoding function.
     - [ ] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
     - [ ] Train Tokenizer on TinyStories.
