@@ -8,7 +8,24 @@ As I add more content, these resources will be updated.
 
 1. Tokenization
     - [x] Add a simple BPE training implementation in Python.
-    - [ ] Add a simple BPE encoding/decoding function.
+    - [x] Add Regex Pretokenization.
     - [ ] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
+    - [ ] Add a simple BPE encoding/decoding function.
     - [ ] Train Tokenizer on TinyStories.
 2. LLM Architecture
+
+## Data
+
+The following data sources have been used:
+
+- `tokenizer_pages.txt`: A copy-and-paste from 🤗Hugging Face's [article on Tokenizers](https://huggingface.co/learn/llm-course/chapter2/4).
+
+- `TinyStoriesV2-GPT4-{train|valid}.txt`: The [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) dataset, obtained as per [CS336 Assignment 1](https://github.com/stanford-cs336/assignment1-basics) instructions:
+
+```bash
+mkdir -p data
+cd data
+
+wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-train.txt
+wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
+```
