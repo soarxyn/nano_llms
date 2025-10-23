@@ -9,6 +9,11 @@ def main():
 
     test_tokenizer.train(train_dataset, verbose=False)
 
+    encoded_string = test_tokenizer.encode("Hello World 🌍!")
+    decoded_string = test_tokenizer.decode(encoded_string)
+
+    print(encoded_string, decoded_string, decoded_string == "Hello World 🌍!")
+
 
 if __name__ == "__main__":
     main()

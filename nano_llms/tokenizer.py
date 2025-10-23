@@ -115,3 +115,39 @@ class Tokenizer:
                 print(
                     f"({i:03d}/{num_merges}) Merged {self.vocabulary[pair_to_merge[0]]}, {self.vocabulary[pair_to_merge[1]]} into {self.vocabulary[new_token]}"
                 )
+
+    def encode(self, text: str) -> list[int]:
+        text_chunks: list[str] = self.pat.findall(text)
+
+        tokens: list[int] = []
+
+        for chunk in text_chunks:
+            chunk_tokens: list[int] = list(chunk.encode("utf-8"))
+
+            while len(chunk_tokens) >= 2:
+                pair_to_merge: tuple[int, int] | None = None
+                pair_position: int = -1
+                pair_token: int = -1
+
+                for i in range(len(chunk_tokens) - 1):
+                    pair = (chunk_tokens[i], chunk_tokens[i + 1])
+
+                    if merged_token := self.merges.get(pair):
+                        if not pair_to_merge or merged_token < pair_token:
+                            pair_to_merge = pair
+                            pair_position = i
+                            pair_token = merged_token
+
+                if pair_to_merge:
+                    chunk_tokens[pair_position] = pair_token
+                    chunk_tokens.pop(pair_position + 1)
+                else:
+                    break
+            tokens.extend(chunk_tokens)
+
+        return tokens
+
+    def decode(self, tokens: list[int]) -> str:
+        return b"".join([self.vocabulary[id] for id in tokens]).decode(
+            "utf-8", errors="replace"
+        )
