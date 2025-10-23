@@ -28,54 +28,83 @@ class Tokenizer:
 
     def merge(
         self, tokens: list[int], pair_to_merge: tuple[int, int], new_token: int
-    ) -> list[int]:
+    ) -> tuple[list[int], dict[tuple[int, int], int]]:
+        if len(tokens) < 2:
+            return tokens, {}
+
         new_tokens: list[int] = []
+        deltas: dict[tuple[int, int], int] = defaultdict(int)
 
         i = 0
+        a, b = pair_to_merge
 
         while i < len(tokens):
-            if (
-                i < len(tokens) - 1
-                and tokens[i] == pair_to_merge[0]
-                and tokens[i + 1] == pair_to_merge[1]
-            ):
+            if i < len(tokens) - 1 and tokens[i] == a and tokens[i + 1] == b:
+                prev_token = new_tokens[-1] if new_tokens else None
+                next_token = tokens[i + 2] if i + 2 < len(tokens) else None
+
+                if prev_token is not None:
+                    deltas[(prev_token, a)] -= 1
+                    deltas[(prev_token, new_token)] += 1
+
+                deltas[(a, b)] -= 1
+
+                if next_token is not None:
+                    deltas[(b, next_token)] -= 1
+                    deltas[(new_token, next_token)] += 1
+
                 new_tokens.append(new_token)
                 i += 2
             else:
                 new_tokens.append(tokens[i])
                 i += 1
-        return new_tokens
+
+        return new_tokens, deltas
 
     def train(self, train_dataset: str, *, verbose: bool = False):
         text_chunks: list[str] = self.pat.findall(train_dataset)
+
         token_chunks: list[list[int]] = [
             list(chunk.encode("utf-8", errors="ignore")) for chunk in text_chunks
         ]
 
         num_merges = self.vocabulary_size - 256
 
+        pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+
+        # Tracks all chunks in which each pair occur.
+        index: dict[tuple[int, int], set[int]] = defaultdict(set)
+
+        for chunk_id, chunk in enumerate(token_chunks):
+            if len(chunk) > 2:
+                chunk_pair_counts = self.get_pair_counts(chunk)
+
+                for pair, count in chunk_pair_counts.items():
+                    pair_counts[pair] += count
+                    index[pair].add(chunk_id)
+
         for i in range(num_merges):
-            per_chunk_max: dict = defaultdict(int)
+            if not pair_counts:
+                break
 
-            for chunk in token_chunks:
-                if len(chunk) > 2:
-                    chunk_pair_counts = self.get_pair_counts(chunk)
-                    chunk_most_frequent = max(
-                        chunk_pair_counts,
-                        key=chunk_pair_counts.get,  # type: ignore
-                    )
-
-                    per_chunk_max[chunk_most_frequent] += 1
-
-            pair_to_merge = max(per_chunk_max, key=per_chunk_max.get)  # type: ignore
-
+            pair_to_merge = max(pair_counts, key=pair_counts.get)  # type: ignore
             new_token = 256 + i
-            new_chunks = []
 
-            for chunk in token_chunks:
-                new_chunks.append(self.merge(chunk, pair_to_merge, new_token))
+            for chunk_id in index[pair_to_merge]:
+                new_chunk, pair_deltas = self.merge(
+                    token_chunks[chunk_id], pair_to_merge, new_token
+                )
 
-            token_chunks = new_chunks
+                token_chunks[chunk_id] = new_chunk
+
+                for pair, delta in pair_deltas.items():
+                    pair_counts[pair] += delta
+
+                    if delta > 0:
+                        index[pair].add(chunk_id)
+
+            del pair_counts[pair_to_merge]
+            del index[pair_to_merge]
 
             self.merges[pair_to_merge] = new_token
             self.vocabulary[new_token] = (

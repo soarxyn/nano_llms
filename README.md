@@ -9,7 +9,7 @@ As I add more content, these resources will be updated.
 1. Tokenization
     - [x] Add a simple BPE training implementation in Python.
     - [x] Add Regex Pretokenization.
-    - [ ] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
+    - [x] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
     - [ ] Add a simple BPE encoding/decoding function.
     - [ ] Train Tokenizer on TinyStories.
 2. LLM Architecture
@@ -29,3 +29,15 @@ cd data
 wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-train.txt
 wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
 ```
+
+## Notes
+
+### On Tokenization
+
+- Initial implementation (`69d6a2a`) works well with very small files (`tokenizer_pages.txt`).
+- But it fails for medium-sized datasets, such as TinyStories' validation split, which should be relatively easy (CS336 reports < 2 min training on consumer hardware).
+- Root cause probably comes from:
+  - Recalculation of frequency counts every step, easily bouncing complexity to $O(N^2)$.
+  - Maybe maximum calculation as well, but it should be more subtle as it takes $O(V^2)$.
+  - Ingestion of large whole text chunks into memory (won't scale for training split, as probably will flood RAM and make swap a bottleneck during Regex matching).
+- The same assignment from CS336 suggests that switching from frequency recalculation at every step to frequency deltas should alleviate the quadratic complexity.
