@@ -8,11 +8,13 @@ def main():
         train_dataset: str = fp.read()
 
     test_tokenizer.train(train_dataset, verbose=False)
+    test_tokenizer.register_special_tokens(["<|endoftext|>"])
 
-    encoded_string = test_tokenizer.encode("Hello World 🌍!")
+    original_string = "Hello World 🌍! <|endoftext|> Goodbye World!"
+    encoded_string = test_tokenizer.encode(original_string)
     decoded_string = test_tokenizer.decode(encoded_string)
 
-    print(encoded_string, decoded_string, decoded_string == "Hello World 🌍!")
+    print(encoded_string, decoded_string, decoded_string == original_string)
 
 
 if __name__ == "__main__":

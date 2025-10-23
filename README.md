@@ -11,7 +11,7 @@ As I add more content, these resources will be updated.
     - [x] Add Regex Pretokenization.
     - [x] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
     - [x] Add a simple BPE encoding/decoding function.
-    - [ ] Add support for special tokens.
+    - [x] Add support for special tokens.
     - [ ] Train Tokenizer on TinyStories.
 2. LLM Architecture
 
@@ -34,6 +34,8 @@ wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinySto
 ## Notes
 
 ### On Tokenization
+
+> This implementation is largely based on [MinBPE](https://github.com/karpathy/minbpe/blob/master/minbpe/regex.py) and [NanoChat's RustBPE](https://github.com/karpathy/nanochat/blob/master/rustbpe/src/lib.rs).
 
 - Initial implementation (`69d6a2a`) works well with very small files (`tokenizer_pages.txt`).
 - But it fails for medium-sized datasets, such as TinyStories' validation split, which should be relatively easy (CS336 reports < 2 min training on consumer hardware).

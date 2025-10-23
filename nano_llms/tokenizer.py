@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import regex as re
+from tqdm import trange
 
 # From: https://github.com/karpathy/minbpe/blob/1acefe89412b20245db5a22d2a02001e547dc602/minbpe/gpt4.py#L48C22-L48C138
 GPT4_PAT = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
@@ -17,6 +18,9 @@ class Tokenizer:
 
         self.merges: dict[tuple[int, int], int] = {}
         self.vocabulary = {token: bytes([token]) for token in range(256)}
+
+        self.special_tokens: dict[str, int] = {}
+        self.inverse_special_tokens: dict[int, str] = {}
 
     def get_pair_counts(self, tokens: list[int]) -> dict[tuple[int, int], int]:
         pair_counts: dict[tuple[int, int], int] = defaultdict(int)
@@ -83,7 +87,7 @@ class Tokenizer:
                     pair_counts[pair] += count
                     index[pair].add(chunk_id)
 
-        for i in range(num_merges):
+        for i in trange(num_merges):
             if not pair_counts:
                 break
 
@@ -116,7 +120,19 @@ class Tokenizer:
                     f"({i:03d}/{num_merges}) Merged {self.vocabulary[pair_to_merge[0]]}, {self.vocabulary[pair_to_merge[1]]} into {self.vocabulary[new_token]}"
                 )
 
-    def encode(self, text: str) -> list[int]:
+    def register_special_tokens(self, special_tokens: list):
+        starting_id: int = len(self.vocabulary)
+
+        self.special_tokens = {
+            token: starting_id + idx for idx, token in enumerate(special_tokens)
+        }
+        self.inverse_special_tokens = {v: k for k, v in self.special_tokens.items()}
+
+        special_pat = [re.escape(s) for s in special_tokens]
+        special_pat = sorted(special_pat, key=len, reverse=True)
+        self.special_pat = re.compile("(" + "|".join(special_pat) + ")")
+
+    def encode_simple(self, text: str) -> list[int]:
         text_chunks: list[str] = self.pat.findall(text)
 
         tokens: list[int] = []
@@ -147,7 +163,27 @@ class Tokenizer:
 
         return tokens
 
+    def encode(self, text: str) -> list[int]:
+        if not self.special_tokens:
+            return self.encode_simple(text)
+
+        simple_chunks: list[str] = self.special_pat.split(text)
+
+        tokens: list[int] = []
+        for chunk in simple_chunks:
+            if chunk in self.special_tokens:
+                tokens.append(self.special_tokens[chunk])
+            else:
+                tokens.extend(self.encode_simple(chunk))
+        return tokens
+
     def decode(self, tokens: list[int]) -> str:
-        return b"".join([self.vocabulary[id] for id in tokens]).decode(
-            "utf-8", errors="replace"
-        )
+        word_bytes: list[bytes] = []
+
+        for token in tokens:
+            if token in self.vocabulary:
+                word_bytes.append(self.vocabulary[token])
+            elif token in self.inverse_special_tokens:
+                word_bytes.append(self.inverse_special_tokens[token].encode("utf-8"))
+
+        return b"".join(word_bytes).decode("utf-8", errors="replace")
