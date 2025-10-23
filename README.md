@@ -10,7 +10,8 @@ As I add more content, these resources will be updated.
     - [x] Add a simple BPE training implementation in Python.
     - [x] Add Regex Pretokenization.
     - [x] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
-    - [ ] Add a simple BPE encoding/decoding function.
+    - [x] Add a simple BPE encoding/decoding function.
+    - [ ] Add support for special tokens.
     - [ ] Train Tokenizer on TinyStories.
 2. LLM Architecture
 
