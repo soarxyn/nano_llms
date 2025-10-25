@@ -1,10 +1,75 @@
 from collections import defaultdict
+from dataclasses import dataclass
+from functools import partial
+from typing import Iterator, Self
+from multiprocessing import Pool
 
 import regex as re
 from tqdm import trange
 
 # From: https://github.com/karpathy/minbpe/blob/1acefe89412b20245db5a22d2a02001e547dc602/minbpe/gpt4.py#L48C22-L48C138
 GPT4_PAT = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+
+
+@dataclass
+class Word:
+    tokens: list[int]
+
+    def pairs(self) -> Iterator[tuple[int, int]]:
+        return zip(self.tokens, self.tokens[1:])
+
+    def merge_pair(
+        self, pair_to_merge: tuple[int, int], new_token: int
+    ) -> dict[tuple[int, int], int]:
+        if (n := len(self.tokens)) < 2:
+            return {}
+
+        new_tokens: list[int] = []
+        deltas: dict[tuple[int, int], int] = defaultdict(int)
+
+        i = 0
+        a, b = pair_to_merge
+
+        while i < n:
+            if i < n - 1 and self.tokens[i] == a and self.tokens[i + 1] == b:
+                prev_token = new_tokens[-1] if new_tokens else None
+                next_token = self.tokens[i + 2] if i + 2 < n else None
+
+                if prev_token is not None:
+                    deltas[(prev_token, a)] -= 1
+                    deltas[(prev_token, new_token)] += 1
+
+                deltas[(a, b)] -= 1
+
+                if next_token is not None:
+                    deltas[(b, next_token)] -= 1
+                    deltas[(new_token, next_token)] += 1
+
+                new_tokens.append(new_token)
+                i += 2
+            else:
+                new_tokens.append(self.tokens[i])
+                i += 1
+
+        self.tokens = new_tokens
+
+        return deltas
+
+
+@dataclass
+class MergeJob:
+    pair_to_merge: tuple[int, int]
+    count: int
+    index: set[int]
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, MergeJob)
+        return self.count == other.count and self.pair_to_merge == other.pair_to_merge
+
+    def __lt__(self, other: Self) -> bool:
+        if self.count != other.count:
+            return self.count < other.count
+        return self.pair_to_merge < other.pair_to_merge
 
 
 class Tokenizer:
@@ -22,13 +87,42 @@ class Tokenizer:
         self.special_tokens: dict[str, int] = {}
         self.inverse_special_tokens: dict[int, str] = {}
 
-    def get_pair_counts(self, tokens: list[int]) -> dict[tuple[int, int], int]:
+    # def get_pair_counts(self, tokens: list[int]) -> dict[tuple[int, int], int]:
+    #     pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+
+    #     for pair in zip(tokens, tokens[1:]):
+    #         pair_counts[pair] += 1
+
+    #     return pair_counts
+
+    def get_pair_counts(self, words: list[Word], counts: list[int]):
+        def map_count(
+            idx: int, word: Word
+        ) -> tuple[dict[tuple[int, int], int], dict[tuple[int, int], set[int]]]:
+            local_counts: dict[tuple[int, int], int] = defaultdict(int)
+            local_index: dict[tuple[int, int], set[int]] = defaultdict(set)
+
+            if len(word.tokens) >= 2 and counts[idx] != 0:
+                for a, b in word.pairs():
+                    local_counts[(a, b)] += counts[idx]
+                    local_index[(a, b)].add(idx)
+
+            return local_counts, local_index
+
+        with Pool(processes=12) as pool:
+            local_results = pool.starmap(map_count, (words, counts))
+
         pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+        index: dict[tuple[int, int], set[int]] = defaultdict(set)
 
-        for pair in zip(tokens, tokens[1:]):
-            pair_counts[pair] += 1
+        for local_counts, local_indices in local_results:
+            for pair, count in local_counts.items():
+                pair_counts[pair] += count
 
-        return pair_counts
+            for pair, ind in local_indices.items():
+                index[pair].update(ind)
+
+        return pair_counts, index
 
     def merge(
         self, tokens: list[int], pair_to_merge: tuple[int, int], new_token: int
