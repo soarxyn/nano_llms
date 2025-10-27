@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 from dataclasses import dataclass
+from heapq import heappop_max, heappush_max
 from multiprocessing import Pool
 from typing import BinaryIO, Iterator, Self
 
@@ -143,30 +144,24 @@ class Tokenizer:
 
         self.num_workers = num_workers
 
-    # def get_pair_counts(self, tokens: list[int]) -> dict[tuple[int, int], int]:
-    #     pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+    def map_count(
+        self, idx: int, word: Word, counts: list[int]
+    ) -> tuple[dict[tuple[int, int], int], dict[tuple[int, int], set[int]]]:
+        local_counts: dict[tuple[int, int], int] = defaultdict(int)
+        local_index: dict[tuple[int, int], set[int]] = defaultdict(set)
 
-    #     for pair in zip(tokens, tokens[1:]):
-    #         pair_counts[pair] += 1
+        if len(word.tokens) >= 2 and counts[idx] != 0:
+            for a, b in word.pairs():
+                local_counts[(a, b)] += counts[idx]
+                local_index[(a, b)].add(idx)
 
-    #     return pair_counts
+        return local_counts, local_index
 
     def get_pair_counts(self, words: list[Word], counts: list[int]):
-        def map_count(
-            idx: int, word: Word
-        ) -> tuple[dict[tuple[int, int], int], dict[tuple[int, int], set[int]]]:
-            local_counts: dict[tuple[int, int], int] = defaultdict(int)
-            local_index: dict[tuple[int, int], set[int]] = defaultdict(set)
-
-            if len(word.tokens) >= 2 and counts[idx] != 0:
-                for a, b in word.pairs():
-                    local_counts[(a, b)] += counts[idx]
-                    local_index[(a, b)].add(idx)
-
-            return local_counts, local_index
-
         with Pool(processes=self.num_workers) as pool:
-            local_results = pool.starmap(map_count, (words, counts))
+            local_results = pool.starmap(
+                self.map_count, [(idx, word, counts) for idx, word in enumerate(words)]
+            )
 
         pair_counts: dict[tuple[int, int], int] = defaultdict(int)
         index: dict[tuple[int, int], set[int]] = defaultdict(set)
@@ -215,21 +210,19 @@ class Tokenizer:
 
         return new_tokens, deltas
 
+    def count_in_chunk(self, strings: str):
+        local_counts: dict[str, int] = defaultdict(int)
+
+        for atom in self.pat.findall(strings):
+            local_counts[atom] += 1
+
+        return local_counts
+
     def train(self, dataset_path: str, *, verbose: bool = False):
         counts: dict[str, int] = defaultdict(int)
 
-        def count_in_chunk(strings: str):
-            local_counts: dict[str, int] = defaultdict(int)
-
-            for atom in self.pat.findall(strings):
-                local_counts[atom] += 1
-
-            return local_counts
-
         with open(dataset_path, mode="rb") as fp:
-            boundaries = find_chunk_boundaries(
-                fp, self.num_workers * 256, b"<|endoftext|>"
-            )
+            boundaries = find_chunk_boundaries(fp, self.num_workers, b"<|endoftext|>")
 
             for start, end in zip(boundaries[:-1], boundaries[1:]):
                 fp.seek(start)
@@ -238,7 +231,7 @@ class Tokenizer:
                 strings = self.eot_pat.split(chunk)
 
                 with Pool(processes=self.num_workers) as pool:
-                    local_counts = pool.map(count_in_chunk, strings)
+                    local_counts = pool.map(self.count_in_chunk, strings)
 
                 for local_count in local_counts:
                     for word, count in local_count.items():
@@ -253,50 +246,66 @@ class Tokenizer:
 
         num_merges = self.vocabulary_size - 256
 
-        pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+        pair_counts, index = self.get_pair_counts(words, count_vector)
 
-        # Tracks all chunks in which each pair occur.
-        index: dict[tuple[int, int], set[int]] = defaultdict(set)
+        heap: list[MergeJob] = []
 
-        for chunk_id, chunk in enumerate(token_chunks):
-            if len(chunk) > 2:
-                chunk_pair_counts = self.get_pair_counts(chunk)
+        for pair, position in index.items():
+            count = pair_counts.get(pair, 0)
 
-                for pair, count in chunk_pair_counts.items():
-                    pair_counts[pair] += count
-                    index[pair].add(chunk_id)
+            if count > 0:
+                heappush_max(heap, MergeJob(pair, count, position))
 
         for i in trange(num_merges):
             if not pair_counts:
                 break
 
-            pair_to_merge = max(pair_counts, key=pair_counts.get)  # type: ignore
+            top_pair = heappop_max(heap)
+
+            current_count = pair_counts.get(top_pair.pair_to_merge, 0)
+
+            if top_pair.count != current_count:
+                top_pair.count = current_count
+
+                if top_pair.count > 0:
+                    heappush_max(heap, top_pair)
+                continue
+
+            if top_pair.count == 0:
+                break
+
             new_token = 256 + i
 
-            for chunk_id in index[pair_to_merge]:
-                new_chunk, pair_deltas = self.merge(
-                    token_chunks[chunk_id], pair_to_merge, new_token
+            local_index_updates: dict[tuple[int, int], set[int]] = defaultdict(set)
+            for word_id in top_pair.index:
+                pair_deltas: dict[tuple[int, int], int] = words[word_id].merge_pair(
+                    top_pair.pair_to_merge, new_token
                 )
 
-                token_chunks[chunk_id] = new_chunk
-
                 for pair, delta in pair_deltas.items():
-                    pair_counts[pair] += delta
+                    delta_total = delta * count_vector[word_id]
 
-                    if delta > 0:
-                        index[pair].add(chunk_id)
+                    if delta_total != 0:
+                        pair_counts[pair] += delta
 
-            del pair_counts[pair_to_merge]
-            del index[pair_to_merge]
+                        if delta > 0:
+                            local_index_updates[pair].add(word_id)
 
-            self.merges[pair_to_merge] = new_token
+            for pair, position in local_index_updates.items():
+                count = pair_counts[pair]
+
+                if count > 0:
+                    heappush_max(heap, MergeJob(pair, count, position))
+
+            self.merges[top_pair.pair_to_merge] = new_token
             self.vocabulary[new_token] = (
-                self.vocabulary[pair_to_merge[0]] + self.vocabulary[pair_to_merge[1]]
+                self.vocabulary[top_pair.pair_to_merge[0]]
+                + self.vocabulary[top_pair.pair_to_merge[1]]
             )
 
             if verbose:
                 print(
-                    f"({i:03d}/{num_merges}) Merged {self.vocabulary[pair_to_merge[0]]}, {self.vocabulary[pair_to_merge[1]]} into {self.vocabulary[new_token]}"
+                    f"({i:03d}/{num_merges}) Merged {self.vocabulary[top_pair.pair_to_merge[0]]}, {self.vocabulary[top_pair.pair_to_merge[1]]} into {self.vocabulary[new_token]}"
                 )
 
     def register_special_tokens(self, special_tokens: list):
