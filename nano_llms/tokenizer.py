@@ -286,9 +286,9 @@ class Tokenizer:
                     delta_total = delta * count_vector[word_id]
 
                     if delta_total != 0:
-                        pair_counts[pair] += delta
+                        pair_counts[pair] += delta_total
 
-                        if delta > 0:
+                        if delta_total > 0:
                             local_index_updates[pair].add(word_id)
 
             for pair, position in local_index_updates.items():

@@ -12,7 +12,7 @@ As I add more content, these resources will be updated.
     - [x] Upgrade BPE training to consider frequency deltas instead of recounting strategy.
     - [x] Add a simple BPE encoding/decoding function.
     - [x] Add support for special tokens.
-    - [ ] Train Tokenizer on TinyStories.
+    - [x] Train Tokenizer on TinyStories.
 2. LLM Architecture
 
 ## Data
@@ -44,3 +44,4 @@ wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinySto
   - Maybe maximum calculation as well, but it should be more subtle as it takes $O(V^2)$.
   - Ingestion of large whole text chunks into memory (won't scale for training split, as probably will flood RAM and make swap a bottleneck during Regex matching).
 - The same assignment from CS336 suggests that switching from frequency recalculation at every step to frequency deltas should alleviate the quadratic complexity.
+- Using RustBPE's implementation has solved all issues and lets us train on the TinyStories train split.
