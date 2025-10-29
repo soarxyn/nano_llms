@@ -14,6 +14,10 @@ As I add more content, these resources will be updated.
     - [x] Add support for special tokens.
     - [x] Train Tokenizer on TinyStories.
 2. LLM Architecture
+    - [x] Linear Layer
+    - [x] Embedding Layer
+    - [ ] RMSNorm
+    - [ ] SwiGLU
 
 ## Data
 
