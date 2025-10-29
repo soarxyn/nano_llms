@@ -1,7 +1,8 @@
+import json
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from heapq import heappop_max, heappush_max
+from heapq import heappop_max, heappush_max  # type: ignore
 from multiprocessing import Pool
 from typing import BinaryIO, Iterator, Self
 
@@ -309,7 +310,7 @@ class Tokenizer:
                 )
 
     def register_special_tokens(self, special_tokens: list):
-        starting_id: int = len(self.vocabulary)
+        starting_id: int = self.vocabulary_size
 
         self.special_tokens = {
             token: starting_id + idx for idx, token in enumerate(special_tokens)
@@ -319,6 +320,38 @@ class Tokenizer:
         special_pat = [re.escape(s) for s in special_tokens]
         special_pat = sorted(special_pat, key=len, reverse=True)
         self.special_pat = re.compile("(" + "|".join(special_pat) + ")")
+
+    def save(self, file_name: str):
+        data: dict = {
+            "merges": {f"{p[0]},{p[1]}": v for p, v in self.merges.items()},
+            "special_tokens": self.special_tokens,
+            "pattern": self.pat.pattern,
+            "vocabulary_size": self.vocabulary_size,
+        }
+
+        with open(file_name, mode="w", encoding="utf-8") as fp:
+            json.dump(data, fp, indent=2)
+
+    @classmethod
+    def load(cls, file_name: str) -> Self:
+        with open(file_name, encoding="utf-8") as fp:
+            data: dict = json.load(fp)
+
+        instance = cls(data["vocabulary_size"])
+
+        for pair, tok in data["merges"].items():
+            pair = tuple(map(int, pair.split(",")))
+            tok = int(tok)
+
+            instance.merges[pair] = tok  # type: ignore
+
+            instance.vocabulary[tok] = (
+                instance.vocabulary[pair[0]] + instance.vocabulary[pair[1]]
+            )
+
+        instance.register_special_tokens(data["special_tokens"])
+
+        return instance
 
     def encode_simple(self, text: str) -> list[int]:
         text_chunks: list[str] = self.pat.findall(text)
