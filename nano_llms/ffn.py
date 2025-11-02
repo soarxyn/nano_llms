@@ -1,11 +1,8 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
+
 from nano_llms.linear import Linear
-
-
-class Swish(nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x * torch.sigmoid(x)
+from nano_llms.ops import swish
 
 
 class SwiGLUFFN(nn.Module):
@@ -21,7 +18,6 @@ class SwiGLUFFN(nn.Module):
         self.w1 = Linear(d_model, d_ff, device, dtype)
         self.w3 = Linear(d_model, d_ff, device, dtype)
         self.w2 = Linear(d_ff, d_model, device, dtype)
-        self.act = Swish()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.w2(self.act(self.w1(x)) * self.w3(x))
+        return self.w2(swish(self.w1(x)) * self.w3(x))

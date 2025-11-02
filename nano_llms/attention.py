@@ -1,26 +1,10 @@
-from math import sqrt
-
 import torch
 import torch.nn as nn
-from einops import einsum, rearrange
+from einops import rearrange
 
 from nano_llms.linear import Linear
+from nano_llms.ops import scaled_dot_product_attn
 from nano_llms.rope import RoPE
-from nano_llms.softmax import softmax
-
-
-def scaled_dot_product_attn(
-    Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor | None = None
-) -> torch.Tensor:
-    inv_d_k = 1.0 / sqrt(K.size(-1))
-
-    scores = inv_d_k * einsum(Q, K, "... n dk, ... m dk -> ... n m")
-
-    if mask is not None:
-        scores = torch.where(mask, scores, float("-inf"))
-
-    weights = softmax(scores, dim=-1)
-    return einsum(weights, V, "... n m, ... m dv -> ... n dv")
 
 
 class MultiHeadSelfAttention(nn.Module):
