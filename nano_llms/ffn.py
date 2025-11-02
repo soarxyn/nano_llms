@@ -19,9 +19,9 @@ class SwiGLUFFN(nn.Module):
         super().__init__()
 
         self.w1 = Linear(d_model, d_ff, device, dtype)
-        self.w2 = Linear(d_model, d_ff, device, dtype)
-        self.w3 = Linear(d_ff, d_model, device, dtype)
+        self.w3 = Linear(d_model, d_ff, device, dtype)
+        self.w2 = Linear(d_ff, d_model, device, dtype)
         self.act = Swish()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.w3(self.act(self.w1(x)) * self.w2(x))
+        return self.w2(self.act(self.w1(x)) * self.w3(x))
