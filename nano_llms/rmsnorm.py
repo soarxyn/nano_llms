@@ -12,7 +12,7 @@ class RMSNorm(nn.Module):
     ):
         super().__init__()
 
-        self.gain: torch.Tensor = nn.Parameter(
+        self.weight: torch.Tensor = nn.Parameter(
             torch.ones(
                 d_model,
                 device=device,
@@ -27,6 +27,6 @@ class RMSNorm(nn.Module):
         x = x.to(torch.float32)
 
         rms = torch.rsqrt(torch.mean(x.square(), dim=-1, keepdim=True) + self.eps)
-        result = x * self.gain * rms
+        result = x * self.weight * rms
 
         return result.to(in_dtype)
