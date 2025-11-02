@@ -29,7 +29,11 @@ class MultiHeadSelfAttention(nn.Module):
         QKV = self.W_QKV(x)
         Q, K, V = rearrange(QKV, "... (r h d) -> r h ... d", r=3, h=self.num_heads)
 
-        if token_positions is not None and self.rope:
+        if self.rope:
+            if token_positions is None:
+                seq_len = x.size(-2)
+                token_positions = torch.arange(seq_len)
+
             Q, K = self.rope(Q, token_positions), self.rope(K, token_positions)
 
         n, m = Q.size(-2), K.size(-2)
