@@ -16,17 +16,19 @@ class MultiHeadSelfAttention(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.W_QKV = Linear(d_model, 3 * d_model)
-        self.W_O = Linear(d_model, d_model)
+        self.qkv_proj = Linear(d_model, 3 * d_model)
+        self.output_proj = Linear(d_model, d_model)
 
         self.num_heads = num_heads
 
         self.rope = pos_encoder
 
+        self._register_load_state_dict_pre_hook(self._load_qkv_hook)
+
     def forward(
         self, x: torch.Tensor, token_positions: torch.Tensor | None = None
     ) -> torch.Tensor:
-        QKV = self.W_QKV(x)
+        QKV = self.qkv_proj(x)
         Q, K, V = rearrange(QKV, "... (r h d) -> r h ... d", r=3, h=self.num_heads)
 
         if self.rope:
@@ -43,6 +45,27 @@ class MultiHeadSelfAttention(nn.Module):
         A = scaled_dot_product_attn(Q, K, V, mask)
         A = rearrange(A, "h ... d -> ... (h d)", h=self.num_heads)
 
-        out = self.W_O(A)
+        out = self.output_proj(A)
 
         return out
+
+    def _load_qkv_hook(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        if f"{prefix}q_proj.weight" in state_dict:
+            q_weight = state_dict.pop(f"{prefix}q_proj.weight")
+            k_weight = state_dict.pop(f"{prefix}k_proj.weight")
+            v_weight = state_dict.pop(f"{prefix}v_proj.weight")
+
+            state_dict[f"{prefix}qkv_proj.weight"] = torch.cat(
+                [q_weight, k_weight, v_weight], dim=0
+            )
+
+            return state_dict
