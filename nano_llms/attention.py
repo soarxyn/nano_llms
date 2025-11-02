@@ -12,25 +12,16 @@ class MultiHeadSelfAttention(nn.Module):
         self,
         d_model: int,
         num_heads: int,
-        theta: float | None = None,
-        max_seq_len: int | None = None,
+        pos_encoder: RoPE | None = None,
     ) -> None:
         super().__init__()
-
-        assert (theta is None and max_seq_len is None) or (
-            theta is not None and max_seq_len is not None
-        )
 
         self.W_QKV = Linear(d_model, 3 * d_model)
         self.W_O = Linear(d_model, d_model)
 
         self.num_heads = num_heads
 
-        self.rope = (
-            RoPE(theta, d_model // num_heads, max_seq_len)
-            if theta and max_seq_len
-            else None
-        )
+        self.rope = pos_encoder
 
     def forward(
         self, x: torch.Tensor, token_positions: torch.Tensor | None = None
