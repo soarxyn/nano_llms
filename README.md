@@ -16,8 +16,10 @@ As I add more content, these resources will be updated.
 2. LLM Architecture
     - [x] Linear Layer
     - [x] Embedding Layer
-    - [ ] RMSNorm
-    - [ ] SwiGLU
+    - [x] RMSNorm
+    - [x] SwiGLU
+    - [ ] RoPE
+    - [ ] Attention
 
 ## Data
 
