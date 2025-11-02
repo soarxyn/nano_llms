@@ -18,7 +18,7 @@ As I add more content, these resources will be updated.
     - [x] Embedding Layer
     - [x] RMSNorm
     - [x] SwiGLU
-    - [ ] RoPE
+    - [x] RoPE
     - [ ] Attention
 
 ## Data
