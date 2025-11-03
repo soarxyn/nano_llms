@@ -27,3 +27,17 @@ def scaled_dot_product_attn(
 
     weights = softmax(scores, dim=-1)
     return einsum(weights, V, "... n m, ... m dv -> ... n dv")
+
+
+def cross_entropy(logits: torch.Tensor, target: torch.Tensor):
+    batch_size = logits.size(0)
+
+    max_val, _ = logits.max(dim=-1, keepdim=True)
+    x = logits - max_val
+
+    target_logit = x.gather(1, target[:, None])
+    log_sump_exp = x.exp().sum(dim=-1, keepdim=True).log()
+
+    loss = -target_logit + log_sump_exp
+
+    return loss.sum() / batch_size
