@@ -29,7 +29,7 @@ def scaled_dot_product_attn(
     return einsum(weights, V, "... n m, ... m dv -> ... n dv")
 
 
-def cross_entropy(logits: torch.Tensor, target: torch.Tensor):
+def cross_entropy(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     batch_size = logits.size(0)
 
     max_val, _ = logits.max(dim=-1, keepdim=True)
