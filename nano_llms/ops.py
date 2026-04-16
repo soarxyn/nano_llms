@@ -9,10 +9,14 @@ def swish(x: torch.Tensor) -> torch.Tensor:
 
 
 def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+    in_dtype = x.dtype
+    x = x.to(torch.float32)
+
     max_val, _ = x.max(dim=dim, keepdim=True)
     z = (x - max_val).exp()
 
-    return z / z.sum(dim=dim, keepdim=True)
+    result = z / z.sum(dim=dim, keepdim=True)
+    return result.to(in_dtype)
 
 
 def scaled_dot_product_attn(

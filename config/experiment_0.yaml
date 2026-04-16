@@ -1,0 +1,24 @@
+transformer:
+  vocab_size: 10000
+  context_length: 256
+  num_layers: 4
+  d_model: 512
+  num_heads: 16
+  d_ff: 1344
+  theta: 10000
+
+dataset:
+  train_path: data/tiny_stories_train_tokens.npy
+  valid_path: data/tiny_stories_valid_tokens.npy
+  batch_size: 10
+
+trainer:
+  max_grad_norm: 1.0
+  max_steps: 10
+  validation_steps: 10
+  validate_every_n_steps: 5 
+
+scheduler:
+  min_lr: 1e-5
+  max_lr: 1e-3
+  warmup_steps: 10000
