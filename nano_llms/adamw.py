@@ -18,7 +18,11 @@ def clip_grad(
     params: Iterable[torch.nn.Parameter], max_grad_norm: float, eps: float = 1e-6
 ):
     grads = [p.grad for p in params if p.grad is not None]
-    total_norm = sqrt(sum([(g * g).sum() for g in grads]))
+
+    if not grads:
+        return
+
+    total_norm = torch.stack([(g * g).sum() for g in grads]).sum().sqrt()
 
     if total_norm <= max_grad_norm:
         return

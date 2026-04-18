@@ -34,7 +34,6 @@ class TinyStoriesDataset(IterableDataset):
         self.batch_size = batch_size
         self.context_length = context_length
         self.device = device
-        self.max_id = self.data.shape[0] - context_length - 1
 
     def __iter__(self):
         while True:

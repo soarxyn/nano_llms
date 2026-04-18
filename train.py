@@ -1,14 +1,16 @@
-import torch
-from torch.utils.data import DataLoader
-from nano_llms.transformer import Transformer
-from nano_llms.training import save_checkpoint, TinyStoriesDataset
-from nano_llms.adamw import AdamW, lr_cosine_schedule, clip_grad
-from nano_llms.ops import cross_entropy
-from tqdm import trange
-
+import math
 from dataclasses import dataclass
 
+import torch
+import wandb
 from jsonargparse import ArgumentParser
+from torch.utils.data import DataLoader
+from tqdm import trange
+
+from nano_llms.adamw import AdamW, clip_grad, lr_cosine_schedule
+from nano_llms.ops import cross_entropy
+from nano_llms.training import TinyStoriesDataset, save_checkpoint
+from nano_llms.transformer import Transformer
 
 
 @dataclass
@@ -24,6 +26,8 @@ class TrainerParams:
     max_steps: int
     validate_every_n_steps: int
     validation_steps: int
+    checkpoint_every_n_steps: int
+    checkpoint_path: str
 
 
 @dataclass
@@ -34,97 +38,130 @@ class SchedulerParams:
 
 
 @torch.inference_mode()
-def evaluate(model, valid_loader, validation_steps, device):
-    model.eval()
+def evaluate(model, valid_iter, validation_steps, device):
+    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+        model.eval()
 
-    total_loss = 0.0
+        total_loss = 0.0
 
-    for _ in trange(validation_steps):
-        batch = next(iter(valid_loader))
+        for _ in trange(validation_steps):
+            batch = next(valid_iter)
 
-        tokens, next_tokens = batch
-        tokens = tokens.to(device, non_blocking=True)
-        next_tokens = next_tokens.to(device, non_blocking=True)
+            tokens, next_tokens = batch
+            tokens = tokens.to(device, non_blocking=True)
+            next_tokens = next_tokens.to(device, non_blocking=True)
 
-        logits = model(tokens)
-        loss = cross_entropy(logits.view(-1, logits.size(-1)), next_tokens.view(-1))
-        total_loss += loss.item()
+            logits = model(tokens)
+            loss = cross_entropy(logits.view(-1, logits.size(-1)), next_tokens.view(-1))
+            total_loss += loss.item()
 
-    model.train()
-    return total_loss / validation_steps
+        model.train()
+        return total_loss / validation_steps
 
 
 def train(cfg):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    train_dataset = TinyStoriesDataset(
-        cfg.dataset.train_path,
-        cfg.dataset.batch_size,
-        cfg.transformer.context_length,
-        "cpu",
-    )
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=None,
-        pin_memory=True,
-        num_workers=4,
-        prefetch_factor=2,
-    )
-
-    valid_dataset = TinyStoriesDataset(
-        cfg.dataset.valid_path,
-        cfg.dataset.batch_size,
-        cfg.transformer.context_length,
-        "cpu",
-    )
-    valid_dataloader = DataLoader(
-        valid_dataset,
-        batch_size=None,
-        pin_memory=True,
-        num_workers=4,
-        prefetch_factor=2,
-    )
-
-    model: Transformer = Transformer(**cfg.transformer.as_dict()).to(device)
-    optimizer = AdamW(model.parameters())
-
-    model.train()
-
-    for idx in trange(cfg.trainer.max_steps):
-        batch = next(iter(train_dataloader))
-
-        current_lr = lr_cosine_schedule(
-            idx,
-            cfg.scheduler.max_lr,
-            cfg.scheduler.min_lr,
-            cfg.scheduler.warmup_steps,
-            cfg.trainer.max_steps,
+    with wandb.init(project="nano-llms", config=cfg.as_dict()) as run:
+        train_dataset = TinyStoriesDataset(
+            cfg.dataset.train_path,
+            cfg.dataset.batch_size,
+            cfg.transformer.context_length,
+            "cpu",
+        )
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_size=None,
+            pin_memory=True,
+            num_workers=4,
+            prefetch_factor=2,
         )
 
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = current_lr
+        valid_dataset = TinyStoriesDataset(
+            cfg.dataset.valid_path,
+            cfg.dataset.batch_size,
+            cfg.transformer.context_length,
+            "cpu",
+        )
+        valid_dataloader = DataLoader(
+            valid_dataset,
+            batch_size=None,
+            pin_memory=True,
+            num_workers=4,
+            prefetch_factor=2,
+        )
 
-        tokens, next_tokens = batch
-        tokens = tokens.to(device, non_blocking=True)
-        next_tokens = next_tokens.to(device, non_blocking=True)
+        model: Transformer = Transformer(**cfg.transformer.as_dict()).to(device)
+        optimizer = AdamW(model.parameters())
 
-        optimizer.zero_grad()
+        run.watch(model)
 
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            logits = model(tokens)
-            loss = cross_entropy(logits.view(-1, logits.size(-1)), next_tokens.view(-1))
+        model.train()
 
-        loss.backward()
-        clip_grad(model.parameters(), cfg.trainer.max_grad_norm)
+        train_iter = iter(train_dataloader)
+        valid_iter = iter(valid_dataloader)
 
-        print(loss.item())
+        for idx in trange(cfg.trainer.max_steps):
+            batch = next(train_iter)
 
-        optimizer.step()
-
-        if idx % cfg.trainer.validate_every_n_steps == 0:
-            valid_loss = evaluate(
-                model, valid_dataloader, cfg.trainer.validation_steps, device
+            current_lr = lr_cosine_schedule(
+                idx,
+                cfg.scheduler.max_lr,
+                cfg.scheduler.min_lr,
+                cfg.scheduler.warmup_steps,
+                cfg.trainer.max_steps,
             )
+
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = current_lr
+
+            tokens, next_tokens = batch
+            tokens = tokens.to(device, non_blocking=True)
+            next_tokens = next_tokens.to(device, non_blocking=True)
+
+            optimizer.zero_grad()
+
+            with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                logits = model(tokens)
+                loss = cross_entropy(
+                    logits.view(-1, logits.size(-1)), next_tokens.view(-1)
+                )
+
+            loss.backward()
+            clip_grad(model.parameters(), cfg.trainer.max_grad_norm)
+
+            optimizer.step()
+
+            run.log(
+                {
+                    "train/loss": loss.item(),
+                    "train/lr": current_lr,
+                    "train_perplexity": math.exp(loss.item()),
+                },
+                step=idx,
+            )
+
+            if idx != 0:
+                if idx % cfg.trainer.checkpoint_every_n_steps == 0:
+                    save_checkpoint(
+                        model,
+                        optimizer,
+                        idx,
+                        cfg.trainer.checkpoint_path + f"checkpoint-step={idx}.ckpt",
+                    )
+
+                if idx % cfg.trainer.validate_every_n_steps == 0:
+                    valid_loss = evaluate(
+                        model, valid_iter, cfg.trainer.validation_steps, device
+                    )
+
+                    run.log(
+                        {
+                            "val/loss": valid_loss,
+                            "val/perplexity": math.exp(valid_loss),
+                        },
+                        step=idx,
+                    )
 
 
 if __name__ == "__main__":
