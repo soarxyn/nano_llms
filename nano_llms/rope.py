@@ -27,6 +27,9 @@ class RoPE(nn.Module):
         assert isinstance(self.cosines, torch.Tensor)
         assert isinstance(self.sines, torch.Tensor)
 
+        in_dtype = x.dtype
+        x = x.to(torch.float32)
+
         cos_i, sin_i = self.cosines[pos], self.sines[pos]
 
         x = rearrange(x, "... (d r) -> ... d r", r=2)  # [... D] -> [... D/2 2]
@@ -39,4 +42,4 @@ class RoPE(nn.Module):
             dim=-1,
         )
 
-        return rearrange(x_rot, "... d r -> ... (d r)", r=2)
+        return rearrange(x_rot, "... d r -> ... (d r)", r=2).to(in_dtype)

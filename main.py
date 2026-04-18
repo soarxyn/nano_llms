@@ -15,7 +15,7 @@ def main():
 
     print(encoded_string, decoded_string, decoded_string == original_string)
 
-    test_tokenizer.save("data/tiny_stories.json")
+#    test_tokenizer.save("data/tiny_stories.json")
 
 
 if __name__ == "__main__":

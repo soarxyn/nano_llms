@@ -34,13 +34,13 @@ class MultiHeadSelfAttention(nn.Module):
         if self.rope:
             if token_positions is None:
                 seq_len = x.size(-2)
-                token_positions = torch.arange(seq_len)
+                token_positions = torch.arange(seq_len, device=x.device)
 
             Q, K = self.rope(Q, token_positions), self.rope(K, token_positions)
 
         n, m = Q.size(-2), K.size(-2)
 
-        mask = torch.tril(torch.ones(n, m, dtype=torch.bool))
+        mask = torch.tril(torch.ones(n, m, dtype=torch.bool, device=x.device))
 
         A = scaled_dot_product_attn(Q, K, V, mask)
         A = rearrange(A, "h ... d -> ... (h d)", h=self.num_heads)

@@ -3,22 +3,43 @@ import torch
 import numpy as np
 from typing import BinaryIO, IO
 
+from torch.utils.data import IterableDataset
+
 
 def sample_sequence(
-    x: np.ndarray, batch_size: int, context_length: int, device: str = "cpu"
+    data: np.ndarray, batch_size: int, context_length: int, device: str = "cpu"
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    max_idx = x.shape[0] - context_length
-    start_indices = np.random.randint(0, max_idx, size=batch_size)
+    max_idx = data.shape[0] - context_length
+    indices = np.random.randint(0, max_idx, size=batch_size)
 
-    offsets = np.arange(context_length)
-    idx = start_indices[:, None] + offsets[None, :]
+    x = [
+        torch.from_numpy(data[i : i + context_length].astype(np.int64)) for i in indices
+    ]
+    y = [
+        torch.from_numpy(data[i + 1 : i + context_length + 1].astype(np.int64))
+        for i in indices
+    ]
 
-    x_tensor = torch.from_numpy(x)
+    x = torch.stack(x).to(device)
+    y = torch.stack(y).to(device)
 
-    sequences = x_tensor[idx]
-    next_tokens = x_tensor[idx + 1]
+    return x, y
 
-    return sequences, next_tokens
+
+class TinyStoriesDataset(IterableDataset):
+    def __init__(
+        self, data_path: str, batch_size: int, context_length: int, device: str
+    ):
+        self.data = np.memmap(data_path, dtype=np.uint16, mode="r")
+        self.batch_size = batch_size
+        self.context_length = context_length
+        self.device = device
+
+    def __iter__(self):
+        while True:
+            yield sample_sequence(
+                self.data, self.batch_size, self.context_length, self.device
+            )
 
 
 def save_checkpoint(

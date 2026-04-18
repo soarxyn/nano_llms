@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "einops>=0.8.1",
     "jaxtyping>=0.3.3",
+    "jsonargparse[signatures]>=4.48.0",
     "numpy>=2.3.4",
     "psutil>=7.2.2",
     "pytest>=9.0.3",
@@ -14,6 +15,7 @@ dependencies = [
     "tiktoken>=0.12.0",
     "torch>=2.11.0",
     "tqdm>=4.67.1",
+    "wandb>=0.26.0",
 ]
 
 [[tool.uv.index]]

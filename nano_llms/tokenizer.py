@@ -2,7 +2,7 @@ import json
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from heapq import heappop_max, heappush_max  # type: ignore
+from heapq import heappop_max, heappush_max, heappush, heappop  # type: ignore
 from multiprocessing import Pool
 from typing import BinaryIO, Iterator, Self
 
@@ -353,7 +353,7 @@ class Tokenizer:
 
         return instance
 
-    def encode_simple(self, text: str) -> list[int]:
+    def encode_simple_slow(self, text: str) -> list[int]:
         text_chunks: list[str] = self.pat.findall(text)
 
         tokens: list[int] = []
@@ -381,6 +381,58 @@ class Tokenizer:
                 else:
                     break
             tokens.extend(chunk_tokens)
+
+        return tokens
+
+    def encode_simple(self, text: str) -> list[int]:
+        text_chunks = self.pat.findall(text)
+        tokens = []
+
+        for chunk in text_chunks:
+            chunk_tokens = list(chunk.encode("utf-8"))
+
+            if len(chunk_tokens) < 2:
+                tokens.extend(chunk_tokens)
+                continue
+
+            n = len(chunk_tokens)
+            prev = list(range(-1, n - 1))
+            next_ = list(range(1, n + 1))
+            alive = [True] * n
+
+            heap = []
+            for i in range(n - 1):
+                pair = (chunk_tokens[i], chunk_tokens[i + 1])
+                if pair in self.merges:
+                    heappush(heap, (self.merges[pair], i))
+
+            while heap:
+                priority, i = heappop(heap)
+                if not alive[i]:
+                    continue
+                j = next_[i]
+                if j == n or not alive[j]:
+                    continue
+                pair = (chunk_tokens[i], chunk_tokens[j])
+                if pair not in self.merges or self.merges[pair] != priority:
+                    continue
+
+                chunk_tokens[i] = priority
+                alive[j] = False
+                next_[i] = next_[j]
+                if next_[j] < n:
+                    prev[next_[j]] = i
+
+                if prev[i] >= 0:
+                    new_pair = (chunk_tokens[prev[i]], chunk_tokens[i])
+                    if new_pair in self.merges:
+                        heappush(heap, (self.merges[new_pair], prev[i]))
+                if next_[i] < n:
+                    new_pair = (chunk_tokens[i], chunk_tokens[next_[i]])
+                    if new_pair in self.merges:
+                        heappush(heap, (self.merges[new_pair], i))
+
+            tokens.extend(t for i, t in enumerate(chunk_tokens) if alive[i])
 
         return tokens
 

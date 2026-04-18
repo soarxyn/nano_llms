@@ -9,10 +9,14 @@ def swish(x: torch.Tensor) -> torch.Tensor:
 
 
 def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+    in_dtype = x.dtype
+    x = x.to(torch.float32)
+
     max_val, _ = x.max(dim=dim, keepdim=True)
     z = (x - max_val).exp()
 
-    return z / z.sum(dim=dim, keepdim=True)
+    result = z / z.sum(dim=dim, keepdim=True)
+    return result.to(in_dtype)
 
 
 def scaled_dot_product_attn(
@@ -30,6 +34,9 @@ def scaled_dot_product_attn(
 
 
 def cross_entropy(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    in_dtype = logits.dtype
+    logits = logits.to(torch.float32)
+
     batch_size = logits.size(0)
 
     max_val, _ = logits.max(dim=-1, keepdim=True)
@@ -40,4 +47,4 @@ def cross_entropy(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
     loss = -target_logit + log_sump_exp
 
-    return loss.sum() / batch_size
+    return (loss.sum() / batch_size).to(in_dtype)
