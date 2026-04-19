@@ -10,15 +10,22 @@ transformer:
 dataset:
   train_path: data/tiny_stories_train_tokens.npy
   valid_path: data/tiny_stories_valid_tokens.npy
-  batch_size: 10
+  batch_size: 64
 
 trainer:
   max_grad_norm: 1.0
-  max_steps: 10
-  validation_steps: 10
-  validate_every_n_steps: 5 
+  max_steps: 20000
+  validation_steps: 100
+  validate_every_n_steps: 1000
+  checkpoint_every_n_steps: 2000
+  checkpoint_path: checkpoints/experiment_0/
 
 scheduler:
   min_lr: 1e-5
-  max_lr: 1e-3
-  warmup_steps: 10000
+  max_lr: 3e-4
+  warmup_steps: 2000
+
+optimizer:
+  betas: [0.9, 0.95]
+  eps: 1e-8
+  weight_decay: 0.1
