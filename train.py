@@ -37,6 +37,13 @@ class SchedulerParams:
     warmup_steps: int
 
 
+@dataclass
+class OptimizerParams:
+    betas: tuple[float, float]
+    eps: float
+    weight_decay: float
+
+
 @torch.inference_mode()
 def evaluate(model, valid_iter, validation_steps, device):
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
@@ -92,7 +99,12 @@ def train(cfg):
         )
 
         model: Transformer = Transformer(**cfg.transformer.as_dict()).to(device)
-        optimizer = AdamW(model.parameters())
+        optimizer = AdamW(
+            model.parameters(),
+            betas=tuple(cfg.optimizer.betas),
+            eps=cfg.optimizer.eps,
+            weight_decay=cfg.optimizer.weight_decay,
+        )
 
         run.watch(model)
 
@@ -171,6 +183,7 @@ if __name__ == "__main__":
     parser.add_class_arguments(DatasetParams, "dataset")
     parser.add_class_arguments(TrainerParams, "trainer")
     parser.add_class_arguments(SchedulerParams, "scheduler")
+    parser.add_class_arguments(OptimizerParams, "optimizer")
 
     cfg = parser.parse_args()
     train(cfg)
