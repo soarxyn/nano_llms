@@ -69,6 +69,7 @@ def evaluate(model, valid_iter, validation_steps, device):
 
 def train(cfg):
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.set_float32_matmul_precision("high")
 
     with wandb.init(project="nano-llms", config=cfg.as_dict()) as run:
         train_dataset = TinyStoriesDataset(
@@ -100,6 +101,8 @@ def train(cfg):
         )
 
         model: Transformer = Transformer(**cfg.transformer.as_dict()).to(device)
+        torch.compile(model)
+
         optimizer = AdamW(
             model.parameters(),
             betas=tuple(cfg.optimizer.betas),
@@ -133,7 +136,7 @@ def train(cfg):
         tokens_per_step: int = cfg.dataset.batch_size * cfg.transformer.context_length
         max_steps: int = cfg.trainer.max_tokens // tokens_per_step
         warmup_steps: int = int(max_steps * cfg.scheduler.warmup_steps_pct)
-        effective_lr: float = cfg.scheduler.max_lr * sqrt(
+        effective_lr: float = cfg.scheduler.max_lr * math.sqrt(
             cfg.dataset.batch_size / cfg.scheduler.base_batch_size
         )
 
