@@ -106,9 +106,25 @@ def train(cfg):
             weight_decay=cfg.optimizer.weight_decay,
         )
 
-        run.watch(model)
+        run.watch(model, log="all")
 
         model.train()
+
+        param_count = (
+            sum([p.numel() for p in model.parameters() if p.requires_grad]) // 1e6
+        )
+        model_size = (
+            sum(
+                [
+                    p.nelement() * p.element_size()
+                    for p in model.parameters()
+                    if p.requires_grad
+                ]
+            )
+            / 1024**2
+        )
+
+        print(f"Total parameters: {param_count}M, model size: {model_size}MB")
 
         train_iter = iter(train_dataloader)
         valid_iter = iter(valid_dataloader)
