@@ -23,7 +23,7 @@ class DatasetParams:
 @dataclass
 class TrainerParams:
     max_grad_norm: float
-    max_steps: int
+    max_tokens: int
     validate_every_n_steps: int
     validation_steps: int
     checkpoint_every_n_steps: int
@@ -34,7 +34,8 @@ class TrainerParams:
 class SchedulerParams:
     max_lr: float
     min_lr: float
-    warmup_steps: int
+    warmup_steps_pct: float
+    base_batch_size: int
 
 
 @dataclass
@@ -129,15 +130,30 @@ def train(cfg):
         train_iter = iter(train_dataloader)
         valid_iter = iter(valid_dataloader)
 
-        for idx in trange(cfg.trainer.max_steps):
+        tokens_per_step: int = cfg.dataset.batch_size * cfg.transformer.context_length
+        max_steps: int = cfg.trainer.max_tokens // tokens_per_step
+        warmup_steps: int = int(max_steps * cfg.scheduler.warmup_steps_pct)
+        effective_lr: float = cfg.scheduler.max_lr * sqrt(
+            cfg.dataset.batch_size / cfg.scheduler.base_batch_size
+        )
+
+        run.config.update(
+            {
+                "max_steps": max_steps,
+                "warmup_steps": warmup_steps,
+                "effective_lr": effective_lr,
+            }
+        )
+
+        for idx in trange(max_steps):
             batch = next(train_iter)
 
             current_lr = lr_cosine_schedule(
                 idx,
-                cfg.scheduler.max_lr,
+                effective_lr,
                 cfg.scheduler.min_lr,
-                cfg.scheduler.warmup_steps,
-                cfg.trainer.max_steps,
+                warmup_steps,
+                max_steps,
             )
 
             for param_group in optimizer.param_groups:
