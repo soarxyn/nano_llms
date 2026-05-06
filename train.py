@@ -101,7 +101,7 @@ def train(cfg):
         )
 
         model: Transformer = Transformer(**cfg.transformer.as_dict()).to(device)
-        torch.compile(model)
+        model = torch.compile(model)
 
         optimizer = AdamW(
             model.parameters(),
