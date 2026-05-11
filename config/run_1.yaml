@@ -1,0 +1,32 @@
+transformer:
+  vocab_size: 10000
+  context_length: 256
+  num_layers: 4
+  d_model: 512
+  num_heads: 16
+  d_ff: 1344
+  theta: 10000
+
+dataset:
+  train_path: data/tiny_stories_train_tokens.npy
+  valid_path: data/tiny_stories_valid_tokens.npy
+  batch_size: 256
+
+trainer:
+  max_grad_norm: 1.0
+  max_tokens: 327680000
+  validation_steps: 100
+  validate_every_n_steps: 1000
+  checkpoint_every_n_steps: 2000
+  checkpoint_path: checkpoints/run_1/
+
+scheduler:
+  min_lr: 1e-5
+  max_lr: 2.623e-3
+  warmup_steps_pct: 0.05
+  base_batch_size: 64
+
+optimizer:
+  betas: [0.9, 0.95]
+  eps: 1e-8
+  weight_decay: 0.1

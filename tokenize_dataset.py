@@ -17,12 +17,14 @@ def process_chunk_to_tokens(args):
         chunk_text = chunk_bytes.decode("utf-8", errors="ignore")
 
     documents = chunk_text.split("<|endoftext|>")
+    eos_id = tokenizer.special_tokens["<|endoftext|>"]
 
     all_tokens = []
     for doc in documents:
         if doc.strip():
             tokens = tokenizer.encode(doc.strip())
             all_tokens.extend(tokens)
+            all_tokens.append(eos_id)
 
     return np.array(all_tokens, dtype=np.uint16)
 

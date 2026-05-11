@@ -43,3 +43,8 @@ class RoPE(nn.Module):
         )
 
         return rearrange(x_rot, "... d r -> ... (d r)", r=2).to(in_dtype)
+
+
+class NoPE(nn.Module):
+    def forward(self, x: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+        return x

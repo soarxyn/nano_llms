@@ -1,0 +1,23 @@
+program: train.py
+method: random
+metric:
+  goal: minimize
+  name: val/loss
+early_terminate:
+  type: hyperband
+  min_iter: 1000
+  eta: 2
+parameters:
+  scheduler:
+    parameters:
+      max_lr:
+        distribution: log_uniform_values
+        min: !!float 1e-4
+        max: !!float 3e-3
+command:
+  - uv 
+  - run
+  - ${program}
+  - --config 
+  - config/sweep_lr_experiment.yaml
+  - ${args}

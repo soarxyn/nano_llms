@@ -8,9 +8,9 @@ def swish(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
 
 
-def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+def softmax(x: torch.Tensor, dim: int, temperature: float = 1.0) -> torch.Tensor:
     in_dtype = x.dtype
-    x = x.to(torch.float32)
+    x = x.to(torch.float32) / temperature
 
     max_val, _ = x.max(dim=dim, keepdim=True)
     z = (x - max_val).exp()
