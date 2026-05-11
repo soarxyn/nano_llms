@@ -20,8 +20,12 @@ def sample_sequence(
         for i in indices
     ]
 
-    x = torch.stack(x).to(device)
-    y = torch.stack(y).to(device)
+    if "cuda" in device:
+        x = torch.stack(x).pin_memory().to(device, non_blocking=True)
+        y = torch.stack(y).pin_memory().to(device, non_blocking=True)
+    else:
+        x = torch.stack(x).to(device)
+        y = torch.stack(y).to(device)
 
     return x, y
 
