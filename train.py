@@ -219,7 +219,6 @@ if __name__ == "__main__":
     parser.add_class_arguments(TrainerParams, "trainer")
     parser.add_class_arguments(SchedulerParams, "scheduler")
     parser.add_class_arguments(OptimizerParams, "optimizer")
-    parser.add_class_arguments(OptimizerParams, "optimizer")
 
     cfg = parser.parse_args()
     train(cfg)
