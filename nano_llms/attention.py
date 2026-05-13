@@ -4,7 +4,8 @@ from einops import rearrange
 
 from nano_llms.linear import Linear
 from nano_llms.ops import scaled_dot_product_attn
-from nano_llms.rope import RoPE, NoPE
+from nano_llms.rmsnorm import RMSNorm
+from nano_llms.rope import NoPE, RoPE
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -13,15 +14,26 @@ class MultiHeadSelfAttention(nn.Module):
         d_model: int,
         num_heads: int,
         pos_encoder: RoPE | NoPE | None = None,
+        qk_norm: bool = False,
+        zero_init_projection: bool = False,
     ) -> None:
         super().__init__()
 
         self.qkv_proj = Linear(d_model, 3 * d_model)
         self.output_proj = Linear(d_model, d_model)
 
+        self.qk_norm = qk_norm
+
+        if self.qk_norm:
+            self.q_norm = RMSNorm(d_model // num_heads)
+            self.k_norm = RMSNorm(d_model // num_heads)
+
         self.num_heads = num_heads
 
         self.pos_encoder = pos_encoder
+
+        if zero_init_projection:
+            nn.init.zeros_(self.output_proj.weight)
 
         self._register_load_state_dict_pre_hook(self._load_qkv_hook)
 
@@ -30,6 +42,10 @@ class MultiHeadSelfAttention(nn.Module):
     ) -> torch.Tensor:
         QKV = self.qkv_proj(x)
         Q, K, V = rearrange(QKV, "... (r h d) -> r h ... d", r=3, h=self.num_heads)
+
+        if self.qk_norm:
+            Q = self.q_norm(Q)
+            K = self.k_norm(K)
 
         if self.pos_encoder:
             if token_positions is None:

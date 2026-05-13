@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from nano_llms.attention import MultiHeadSelfAttention
 from nano_llms.embedding import Embedding
-from nano_llms.ffn import SwiGLUFFN, SiLUFFN
+from nano_llms.ffn import SwiGLUFFN, SiLUFFN, ReLU2GLUFFN
 from nano_llms.linear import Linear
 from nano_llms.rmsnorm import RMSNorm
 from nano_llms.rope import RoPE, NoPE
@@ -24,19 +24,28 @@ class Block(nn.Module):
         d_ff: int,
         pos_encoder: RoPE | NoPE | None = None,
         norm_type: Literal["prenorm", "postnorm", "normless"] = "prenorm",
-        ff_type: Literal["swiglu", "silu"] = "swiglu",
+        ff_type: Literal["swiglu", "silu", "relu2"] = "swiglu",
+        qk_norm: bool = False,
+        zero_init_projection: bool = False,
     ) -> None:
         super().__init__()
 
         self.norm_type = norm_type
 
         self.ln1 = RMSNorm(d_model) if norm_type != "normless" else Identity()
-        self.attn = MultiHeadSelfAttention(d_model, num_heads, pos_encoder)
+        self.attn = MultiHeadSelfAttention(
+            d_model, num_heads, pos_encoder, qk_norm, zero_init_projection
+        )
 
         self.ln2 = RMSNorm(d_model) if norm_type != "normless" else Identity()
-        self.ffn = (
-            SwiGLUFFN(d_model, d_ff) if ff_type == "swiglu" else SiLUFFN(d_model, d_ff)
-        )
+
+        match ff_type:
+            case "swiglu":
+                self.ffn = SwiGLUFFN(d_model, d_ff, zero_init_projection)
+            case "silu":
+                self.ffn = SiLUFFN(d_model, d_ff, zero_init_projection)
+            case "relu2":
+                self.ffn = ReLU2GLUFFN(d_model, d_ff, zero_init_projection)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         match self.norm_type:
@@ -62,7 +71,9 @@ class Transformer(nn.Module):
         theta: float,
         norm_type: Literal["prenorm", "postnorm", "normless"] = "prenorm",
         pos_encoder_type: Literal["rope", "nope"] = "rope",
-        ff_type: Literal["swiglu", "silu"] = "swiglu",
+        ff_type: Literal["swiglu", "silu", "relu2"] = "swiglu",
+        qk_norm: bool = False,
+        zero_init_projection: bool = False,
     ) -> None:
         super().__init__()
 
@@ -75,7 +86,16 @@ class Transformer(nn.Module):
         )
         self.layers = nn.ModuleList(
             [
-                Block(d_model, num_heads, d_ff, pos_encoder, norm_type, ff_type)
+                Block(
+                    d_model,
+                    num_heads,
+                    d_ff,
+                    pos_encoder,
+                    norm_type,
+                    ff_type,
+                    qk_norm,
+                    zero_init_projection,
+                )
                 for _ in range(num_layers)
             ]
         )

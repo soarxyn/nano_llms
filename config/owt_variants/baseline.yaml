@@ -8,17 +8,18 @@ transformer:
   theta: 10000
 
 dataset:
-  train_path: data/tiny_stories_train_tokens.npy
-  valid_path: data/tiny_stories_valid_tokens.npy
-  batch_size: 256
+  train_path: data/owt_train_tokens.npy
+  valid_path: data/owt_valid_tokens.npy
+  batch_size: 512
 
 trainer:
   max_grad_norm: 1.0
   max_tokens: 327680000
   validation_steps: 100
-  validate_every_n_steps: 1000
-  checkpoint_every_n_steps: 2000
-  checkpoint_path: checkpoints/run_1/
+  validate_every_n_steps: 500
+  checkpoint_every_n_steps: 500
+  checkpoint_path: checkpoints/owt/baseline
+  run_name: owt-train-baseline
 
 scheduler:
   min_lr: 1e-5

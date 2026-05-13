@@ -1,12 +1,15 @@
 import math
+import os
+import random
 from dataclasses import dataclass
 
+import numpy as np
 import torch
-import wandb
 from jsonargparse import ArgumentParser
 from torch.utils.data import DataLoader
 from tqdm import trange
 
+import wandb
 from nano_llms.adamw import AdamW, clip_grad, lr_cosine_schedule
 from nano_llms.ops import cross_entropy
 from nano_llms.training import TinyStoriesDataset, save_checkpoint
@@ -28,6 +31,7 @@ class TrainerParams:
     validation_steps: int
     checkpoint_every_n_steps: int
     checkpoint_path: str
+    run_name: str
 
 
 @dataclass
@@ -71,7 +75,15 @@ def train(cfg):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.set_float32_matmul_precision("high")
 
-    with wandb.init(project="nano-llms", config=cfg.as_dict()) as run:
+    torch.manual_seed(42)
+    random.seed(42)
+    np.random.seed(0)
+
+    os.makedirs(cfg.trainer.checkpoint_path, exist_ok=True)
+
+    with wandb.init(
+        project="nano-llms", name=cfg.trainer.run_name, config=cfg.as_dict()
+    ) as run:
         train_dataset = TinyStoriesDataset(
             cfg.dataset.train_path,
             cfg.dataset.batch_size,

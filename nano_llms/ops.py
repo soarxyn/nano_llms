@@ -8,6 +8,10 @@ def swish(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
 
 
+def relu_sqr(x: torch.Tensor) -> torch.Tensor:
+    return x.clamp(min=0).square_()
+
+
 def softmax(x: torch.Tensor, dim: int, temperature: float = 1.0) -> torch.Tensor:
     in_dtype = x.dtype
     x = x.to(torch.float32) / temperature
