@@ -9,8 +9,9 @@ from jsonargparse import ArgumentParser
 from torch.utils.data import DataLoader
 from tqdm import trange
 
+from functools import partial
 import wandb
-from nano_llms.adamw import AdamW, clip_grad, lr_cosine_schedule
+from nano_llms.adamw import AdamW, clip_grad, lr_cosine_schedule, Muon, Scheduler
 from nano_llms.ops import cross_entropy
 from nano_llms.training import TinyStoriesDataset, save_checkpoint
 from nano_llms.transformer import Transformer
@@ -47,6 +48,7 @@ class OptimizerParams:
     betas: tuple[float, float]
     eps: float
     weight_decay: float
+    use_muon: bool = False
 
 
 @torch.inference_mode()
@@ -112,15 +114,71 @@ def train(cfg):
             prefetch_factor=2,
         )
 
+        tokens_per_step: int = cfg.dataset.batch_size * cfg.transformer.context_length
+        max_steps: int = cfg.trainer.max_tokens // tokens_per_step
+        warmup_steps: int = int(max_steps * cfg.scheduler.warmup_steps_pct)
+        effective_lr: float = cfg.scheduler.max_lr * math.sqrt(
+            cfg.dataset.batch_size / cfg.scheduler.base_batch_size
+        )
+
+        run.config.update(
+            {
+                "max_steps": max_steps,
+                "warmup_steps": warmup_steps,
+                "effective_lr": effective_lr,
+            }
+        )
+
         model: Transformer = Transformer(**cfg.transformer.as_dict()).to(device)
         model = torch.compile(model)
 
-        optimizer = AdamW(
-            model.parameters(),
-            betas=tuple(cfg.optimizer.betas),
-            eps=cfg.optimizer.eps,
-            weight_decay=cfg.optimizer.weight_decay,
+        optimizers: list[torch.optim.Optimizer] = []
+        schedulers: list[torch.optim.lr_scheduler.LambdaLR] = []
+
+        cosine_sched = partial(
+            lr_cosine_schedule,
+            min_lr=cfg.scheduler.min_lr,
+            warmup_steps=warmup_steps,
+            cosine_steps=max_steps,
         )
+
+        if cfg.optimizer.use_muon:
+            adamw = AdamW(
+                [
+                    *model.token_embeddings.parameters(),
+                    *model.ln_final.parameters(),
+                    *model.lm_head.parameters(),
+                    *[p for p in model.layers.parameters() if p.ndim < 2],
+                ],
+                betas=tuple(cfg.optimizer.betas),
+                eps=cfg.optimizer.eps,
+                weight_decay=cfg.optimizer.weight_decay,
+            )
+            adamw_sched = Scheduler(adamw, partial(cosine_sched, max_lr=effective_lr))
+
+            muon = Muon([p for p in model.layers.parameters() if p.ndim >= 2])
+            muon_sched = Scheduler(
+                muon, partial(cosine_sched, max_lr=effective_lr * 0.1)
+            )
+
+            optimizers = [adamw, muon]
+            schedulers = [adamw_sched, muon_sched]
+
+            for name, p in model.layers.named_parameters():
+                if p.ndim >= 2:
+                    print(name, p.shape)
+
+        else:
+            adamw = AdamW(
+                model.parameters(),
+                betas=tuple(cfg.optimizer.betas),
+                eps=cfg.optimizer.eps,
+                weight_decay=cfg.optimizer.weight_decay,
+            )
+            adamw_sched = Scheduler(adamw, partial(cosine_sched, max_lr=effective_lr))
+
+            optimizers = [adamw]
+            schedulers = [adamw_sched]
 
         run.watch(model, log="all")
 
@@ -145,40 +203,15 @@ def train(cfg):
         train_iter = iter(train_dataloader)
         valid_iter = iter(valid_dataloader)
 
-        tokens_per_step: int = cfg.dataset.batch_size * cfg.transformer.context_length
-        max_steps: int = cfg.trainer.max_tokens // tokens_per_step
-        warmup_steps: int = int(max_steps * cfg.scheduler.warmup_steps_pct)
-        effective_lr: float = cfg.scheduler.max_lr * math.sqrt(
-            cfg.dataset.batch_size / cfg.scheduler.base_batch_size
-        )
-
-        run.config.update(
-            {
-                "max_steps": max_steps,
-                "warmup_steps": warmup_steps,
-                "effective_lr": effective_lr,
-            }
-        )
-
         for idx in trange(max_steps):
             batch = next(train_iter)
 
-            current_lr = lr_cosine_schedule(
-                idx,
-                effective_lr,
-                cfg.scheduler.min_lr,
-                warmup_steps,
-                max_steps,
-            )
-
-            for param_group in optimizer.param_groups:
-                param_group["lr"] = current_lr
+            for scheduler in schedulers:
+                scheduler.step(idx)
 
             tokens, next_tokens = batch
             tokens = tokens.to(device, non_blocking=True)
             next_tokens = next_tokens.to(device, non_blocking=True)
-
-            optimizer.zero_grad()
 
             with torch.autocast(device_type=device, dtype=torch.bfloat16):
                 logits = model(tokens)
@@ -187,15 +220,22 @@ def train(cfg):
                 )
 
             loss.backward()
+
             clip_grad(model.parameters(), cfg.trainer.max_grad_norm)
 
-            optimizer.step()
+            for optimizer in optimizers:
+                optimizer.step()
+
+            model.zero_grad(set_to_none=True)
 
             run.log(
                 {
                     "train/loss": loss.item(),
-                    "train/lr": current_lr,
                     "train_perplexity": math.exp(loss.item()),
+                    **{
+                        f"train/lr_{idx}": sched.last_lr
+                        for idx, sched in enumerate(schedulers)
+                    },
                 },
                 step=idx,
             )
@@ -204,7 +244,7 @@ def train(cfg):
                 if idx % cfg.trainer.checkpoint_every_n_steps == 0:
                     save_checkpoint(
                         model,
-                        optimizer,
+                        optimizers,
                         idx,
                         cfg.trainer.checkpoint_path + f"checkpoint-step={idx}.ckpt",
                     )

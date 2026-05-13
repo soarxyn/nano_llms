@@ -4,7 +4,7 @@ transformer:
   num_layers: 4
   d_model: 512
   num_heads: 16
-  d_ff: 1344
+  d_ff: 2016
   theta: 10000
   ff_type: relu2
 
@@ -19,7 +19,7 @@ trainer:
   validation_steps: 100
   validate_every_n_steps: 500
   checkpoint_every_n_steps: 500
-  checkpoint_path: checkpoints/owt/relu2
+  checkpoint_path: checkpoints/owt/relu2/
   run_name: owt-train-relu2
 
 scheduler:

@@ -48,19 +48,20 @@ class TinyStoriesDataset(IterableDataset):
 
 def save_checkpoint(
     model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
+    optimizers: list[torch.optim.Optimizer],
     iteration: int,
     out: str | os.PathLike | BinaryIO | IO[bytes],
 ):
     obj = {
         "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
+        "optimizers": [optimizer.state_dict() for optimizer in optimizers],
         "iteration": iteration,
     }
 
     torch.save(obj, out)
 
 
+# TODO: Rewrite here to account for >1 optimizers.
 def load_checkpoint(
     src: str | os.PathLike | BinaryIO | IO[bytes],
     model: torch.nn.Module,

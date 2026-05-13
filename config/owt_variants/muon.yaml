@@ -18,8 +18,8 @@ trainer:
   validation_steps: 100
   validate_every_n_steps: 500
   checkpoint_every_n_steps: 500
-  checkpoint_path: checkpoints/owt/baseline/
-  run_name: owt-train-baseline
+  checkpoint_path: checkpoints/owt/muon/
+  run_name: owt-train-muon
 
 scheduler:
   min_lr: 1e-5
@@ -31,3 +31,4 @@ optimizer:
   betas: [0.9, 0.95]
   eps: 1e-8
   weight_decay: 0.1
+  use_muon: true
